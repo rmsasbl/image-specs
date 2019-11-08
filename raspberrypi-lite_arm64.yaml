@@ -1,0 +1,122 @@
+# See https://wiki.debian.org/RaspberryPi3 for known issues and more details.
+
+steps:
+  - mkimg: "{{ output }}"
+    size: 1500M
+
+  - mklabel: msdos
+    device: "{{ output }}"
+
+  - mkpart: primary
+    fs-type: 'fat32'
+    device: "{{ output }}"
+    start: 0%
+    end: 20%
+    tag: /boot
+
+  - mkpart: primary
+    device: "{{ output }}"
+    start: 20%
+    end: 100%
+    tag: /
+
+  - kpartx: "{{ output }}"
+
+  - mkfs: vfat
+    partition: /boot
+    label: RASPIFIRM
+
+  - mkfs: ext4
+    partition: /
+    label: RASPIROOT
+
+  - mount: /
+
+  - mount: /boot
+    mount-on: /
+    dirname: '/boot/firmware'
+
+  - unpack-rootfs: /
+
+  - qemu-debootstrap: bullseye
+    mirror: http://deb.debian.org/debian
+    target: /
+    arch: arm64
+    variant: minbase
+    components:
+    - main
+    - contrib
+    - non-free
+    unless: rootfs_unpacked
+
+  - apt: install
+    packages:
+    - openssh-server
+    # Contains /lib/firmware/brcm/brcmfmac43430-sdio.bin (required for WiFi).
+    - firmware-brcm80211
+    - wireless-tools
+    - wpasupplicant
+    - sudo
+    - systemd-sysv
+    - python3-rpi.gpio
+    - iproute2
+    - net-tools
+    - isc-dhcp-client
+    - nano
+    - dosfstools
+    - linux-image-arm64
+    tag: /
+    unless: rootfs_unpacked
+
+  - cache-rootfs: /
+    unless: rootfs_unpacked
+
+  - shell: |
+      echo "raspberrypi" > "${ROOT?}/etc/hostname"
+
+      # Allow root logins with no password
+      sed -i 's,root:[^:]*:,root::,' "${ROOT?}/etc/shadow"
+
+      install -m 644 -o root -g root fstab "${ROOT?}/etc/fstab"
+
+      install -m 644 -o root -g root eth0 "${ROOT?}/etc/network/interfaces.d/eth0"
+
+      install -m 755 -o root -g root rpi-set-sysconf "${ROOT?}/usr/local/sbin/rpi-set-sysconf"
+      install -m 644 -o root -g root rpi-set-sysconf.service "${ROOT?}/etc/systemd/system"
+      install -m 644 -o root -g root sysconf.txt "${ROOT?}/boot/firmware/sysconf.txt"
+      mkdir -p "${ROOT?}/etc/systemd/system/basic.target.requires/"
+      ln -s /etc/systemd/system/rpi-set-sysconf.service "${ROOT?}/etc/systemd/system/basic.target.requires/rpi-set-sysconf.service"
+
+      install -m 755 -o root -g root rpi-resizerootfs "${ROOT?}/usr/sbin/rpi-resizerootfs"
+      install -m 644 -o root -g root rpi-resizerootfs.service "${ROOT?}/etc/systemd/system"
+      mkdir -p "${ROOT?}/etc/systemd/system/systemd-remount-fs.service.requires/"
+      ln -s /etc/systemd/system/rpi-resizerootfs.service "${ROOT?}/etc/systemd/system/systemd-remount-fs.service.requires/rpi-resizerootfs.service"
+
+      install -m 644 -o root -g root rpi-generate-ssh-host-keys.service "${ROOT?}/etc/systemd/system"
+      mkdir -p "${ROOT?}/etc/systemd/system/multi-user.target.requires/"
+      ln -s /etc/systemd/system/rpi-generate-ssh-host-keys.service "${ROOT?}/etc/systemd/system/multi-user.target.requires/rpi-generate-ssh-host-keys.service"
+      rm -f ${ROOT?}/etc/ssh/ssh_host_*_key*
+      install -m 644 -o root -g root raspi-firmware_1.20190819-2_arm64.deb "${ROOT?}/raspi-firmware_1.20190819-2_arm64.deb"
+    root-fs: /
+
+  # Clean up archive cache (likely not useful) and lists (likely outdated) to
+  # reduce image size by several hundred megabytes.
+  - chroot: /
+    shell: |
+      dpkg -i /raspi-firmware_1.20190819-2_arm64.deb
+      rm /raspi-firmware_1.20190819-2_arm64.deb
+      apt-get clean
+      rm -rf /var/lib/apt/lists
+
+  # Modify the kernel commandline we take from the firmware to boot from
+  # the partition labeled raspiroot instead of forcing it to mmcblk0p2
+  - chroot: /
+    shell: |
+      ls -aR /boot
+      sed -i 's/.dev.mmcblk0p2/LABEL=RASPIROOT/' /boot/firmware/cmdline.txt
+
+  # TODO(https://github.com/larswirzenius/vmdb2/issues/24): remove once vmdb
+  # clears /etc/resolv.conf on its own.
+  - shell: |
+      rm "${ROOT?}/etc/resolv.conf"
+    root-fs: /
