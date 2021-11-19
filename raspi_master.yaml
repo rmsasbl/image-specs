@@ -121,6 +121,9 @@ steps:
       ln -s /etc/systemd/system/rpi-generate-ssh-host-keys.service "${ROOT?}/etc/systemd/system/multi-user.target.requires/rpi-generate-ssh-host-keys.service"
       rm -f "${ROOT?}"/etc/ssh/ssh_host_*_key*
 
+      # CM4 support: DTB & patched raspi-firmware
+      cp rootfs/root/* "${ROOT?}/root"
+
       __EXTRA_SHELL_CMDS__
     root-fs: /
 
@@ -128,6 +131,12 @@ steps:
   - chroot: /
     shell: |
       install -m 644 -o root -g root __DTB__ /boot/firmware/
+
+  # CM4 support: deploy DTB, and install patched raspi-firmware
+  - chroot: /
+    shell: |
+      install -m 644 -o root -g root /root/bcm2711-rpi-cm4-io.dtb /boot/firmware
+      dpkg -i /root/raspi-firmware_1.20210805+ds-2_arm64.deb
 
   # Clean up archive cache (likely not useful) and lists (likely outdated) to
   # reduce image size by several hundred megabytes.
