@@ -169,3 +169,18 @@ steps:
     shell: |
       rm -f /etc/machine-id /var/lib/dbus/machine-id
       __TOUCH_MACHINE_ID__
+
+  # Insert a model filter for some families, to make sure users of Compute
+  # Module devices have a chance to boot our image without manual config:
+  - chroot: /
+    shell: |
+      if [ -n "__CM_DEV__" ] && [ -n "__CM_DTB__" ]; then
+        cat >> /etc/default/raspi-firmware-custom <<EOF
+      # The following makes sure a Pi CM__VERSION__ device can be booted without any
+      # extra configuration (see raspi-firmware's README.debian for details). If
+      # you're using a regular Pi __VERSION__ device, you can safely remove the following
+      # two lines:
+      [__CM_DEV__]
+      device_tree=__CM_DTB__
+      EOF
+      fi
