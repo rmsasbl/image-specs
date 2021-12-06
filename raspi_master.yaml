@@ -2,7 +2,7 @@
 
 steps:
   - mkimg: "{{ output }}"
-    size: 1500M
+    size: __IMGSIZE__
 
   - mklabel: msdos
     device: "{{ output }}"

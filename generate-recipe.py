@@ -25,6 +25,13 @@ target_yaml = 'raspi_%s_%s.yaml' % (version, suite)
 
 ### Setting variables based on suite and version starts here
 
+# Size:
+if version in ['3', '4'] and suite in ['bookworm']:
+    # Needed as of 2021-12:
+    imgsize = '1800M'
+else:
+    imgsize = '1500M'
+
 # Arch, kernel, DTB:
 if version == '1':
     arch = 'armel'
@@ -149,6 +156,7 @@ with open('raspi_master.yaml', 'r') as in_file:
         in_text = in_file.read()
         out_text = in_text \
             .replace('__RELEASE__', suite) \
+            .replace('__IMGSIZE__', imgsize) \
             .replace('__ARCH__', arch) \
             .replace('__LINUX_IMAGE__', linux) \
             .replace('__DTB__', dtb) \
